@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="cracked gem logo">
+  <rect x="0" y="0" width="96" height="96" rx="18" fill="#16161d"/>
+  <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="24,26 72,26 88,44 48,86 8,44" stroke="#f1707b" stroke-width="3.5" fill="#f1707b" fill-opacity="0.1"/>
+    <path d="M24,26 L34,44 M72,26 L62,44 M8,44 L88,44 M34,44 L48,26 L62,44" stroke="#f1707b" stroke-width="1.6" opacity="0.55"/>
+    <path d="M34,44 L48,86 M62,44 L48,86" stroke="#f1707b" stroke-width="1.6" opacity="0.55"/>
+    <path d="M44,22 L52,38 L42,52 L54,66 L46,90" stroke="#e8e6e3" stroke-width="3"/>
+  </g>
+</svg>

@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>every gemma-4 provider is terrible</title>
+<meta name="description" content="Reasoning carry × tool-call image results for hosted gemma-4-31b, probed across 9 providers. Google's reference API supports both; not one third-party provider does — including Google's own OpenAI-compat shim. With deterministic repro JSONs.">
+<meta name="theme-color" content="#16161d">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="icon" type="image/png" sizes="128x128" href="favicon.png">
+<link rel="apple-touch-icon" href="favicon.png">
+
+<!-- Open Graph (Discord, Slack, Facebook, …) -->
+<!-- TODO before deploy: replace USERNAME/REPO with your GitHub Pages URL -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="luna-companion probes">
+<meta property="og:title" content="every gemma-4 provider is terrible">
+<meta property="og:description" content="Reasoning carry × tool-call image results, probed across 9 providers. Google's reference API supports both; not one third-party provider does. Deterministic repro JSONs included.">
+<meta property="og:url" content="https://USERNAME.github.io/REPO/">
+<meta property="og:image" content="https://USERNAME.github.io/REPO/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A cracked red gem next to the title 'every gemma-4 provider is terrible' — google native ✓✓, everyone else ✗">
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="every gemma-4 provider is terrible">
+<meta name="twitter:description" content="Reasoning carry × tool-call image results, probed across 9 providers. Google's reference API supports both; not one third-party provider does. Deterministic repro JSONs included.">
+<meta name="twitter:image" content="https://USERNAME.github.io/REPO/og-image.png">
+<style>
+  :root {
+    --bg: #16161d;
+    --panel: #1e1e28;
+    --text: #e8e6e3;
+    --muted: #9a97a3;
+    --border: #34323e;
+    --good: #58d68d;
+    --good-bg: rgba(88, 214, 141, 0.10);
+    --bad: #f1707b;
+    --bad-bg: rgba(241, 112, 123, 0.08);
+    --meh: #e2b93d;
+    --meh-bg: rgba(226, 185, 61, 0.08);
+    --unk: #8a879a;
+    --ref-bg: rgba(88, 160, 214, 0.10);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 3rem 1.5rem 4rem;
+  }
+  main { max-width: 60rem; margin: 0 auto; }
+  .masthead {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    margin-bottom: 1rem;
+  }
+  .logo { flex: none; overflow: visible; }
+  h1 {
+    font-size: 2.1rem;
+    letter-spacing: -0.02em;
+  }
+  .stamp {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 0.15rem;
+  }
+  .stamp strong { color: var(--text); }
+  @media (max-width: 34rem) { .masthead { flex-direction: column; align-items: flex-start; } }
+  .sub {
+    color: var(--muted);
+    max-width: 46rem;
+    margin-bottom: 2rem;
+  }
+  .sub strong { color: var(--text); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    background: var(--panel);
+    font-size: 0.95rem;
+  }
+  th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  thead th {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    background: #191922;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.provider { white-space: nowrap; font-weight: 600; }
+  td.provider .api { display: block; font-weight: 400; font-size: 0.78rem; color: var(--muted); }
+  .verdict { font-weight: 700; white-space: nowrap; }
+  .note { display: block; font-size: 0.8rem; color: var(--muted); font-weight: 400; margin-top: 0.15rem; max-width: 22rem; }
+  td.yes  { background: var(--good-bg); } td.yes  .verdict { color: var(--good); }
+  td.no   { background: var(--bad-bg); }  td.no   .verdict { color: var(--bad); }
+  td.meh  { background: var(--meh-bg); }  td.meh  .verdict { color: var(--meh); }
+  td.unk .verdict { color: var(--unk); font-weight: 400; }
+  tr.reference td { background: var(--ref-bg); border-bottom: 2px solid var(--border); }
+  tr.reference td.provider::after {
+    content: "reference";
+    display: inline-block;
+    margin-left: 0.6rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #58a0d6;
+    border: 1px solid #58a0d6;
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+    vertical-align: middle;
+  }
+  .fine {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 1.6rem;
+    max-width: 52rem;
+  }
+  .fine p { margin-bottom: 0.5rem; }
+  code { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 0.85em; color: #c9c6f0; }
+  .repro-h { margin-top: 2.2rem; letter-spacing: -0.01em; }
+  h3.repro-h { margin-top: 1.8rem; font-size: 1.05rem; }
+  pre {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin-top: 0.8rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  pre code { font-size: 1em; }
+  pre.curl { margin-top: 0.4rem; }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #faf9f7; --panel: #ffffff; --text: #23212b; --muted: #6d6a78;
+      --border: #e2e0da; --good: #1e8e4f; --good-bg: rgba(30,142,79,.08);
+      --bad: #c2333f; --bad-bg: rgba(194,51,63,.06);
+      --meh: #9a7b12; --meh-bg: rgba(154,123,18,.07);
+      --unk: #8a879a; --ref-bg: rgba(43,108,163,.08);
+    }
+    thead th { background: #f3f2ee; }
+    code { color: #4a44a0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <svg class="logo" viewBox="0 0 96 96" width="72" height="72" role="img" aria-label="cracked gem logo">
+      <!-- faceted gem, brilliant-cut silhouette -->
+      <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+        <!-- crown + pavilion outline -->
+        <polygon points="24,26 72,26 88,44 48,86 8,44" stroke="var(--bad)" stroke-width="3.5" fill="var(--bad-bg)"/>
+        <!-- crown facets -->
+        <path d="M24,26 L34,44 M72,26 L62,44 M8,44 L88,44 M34,44 L48,26 L62,44"
+              stroke="var(--bad)" stroke-width="1.6" opacity="0.55"/>
+        <!-- pavilion facets -->
+        <path d="M34,44 L48,86 M62,44 L48,86" stroke="var(--bad)" stroke-width="1.6" opacity="0.55"/>
+        <!-- the crack -->
+        <path d="M44,22 L52,38 L42,52 L54,66 L46,90" stroke="var(--text)" stroke-width="3" fill="none"/>
+      </g>
+    </svg>
+    <div>
+      <h1>every gemma-4 provider is terrible</h1>
+      <p class="stamp">current as of <strong>2026-07-06</strong></p>
+    </div>
+  </header>
+  <p class="sub">
+    Two things an agentic harness needs from a hosted <strong>gemma-4-31b</strong>:
+    the model's prior-turn <strong>reasoning rendered back into context on replay</strong>
+    (otherwise every tool boundary lobotomizes the plan), and <strong>images inside
+    tool results</strong> (otherwise no multimodal tools). Google's own reference API does
+    both — proving these are <em>provider schema choices, not model limits</em>.
+    <strong>Not one third-party provider does both. Including Google's own OpenAI-compat shim.</strong>
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead>
+      <tr>
+        <th>provider</th>
+        <th>reasoning carry <span class="note">planted prior-turn CoT ("99") renders on replay?</span></th>
+        <th>tool-call image results <span class="note">model perceives an image returned by a tool?</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="reference">
+        <td class="provider">Google<span class="api">native <code>generateContent</code></span></td>
+        <td class="yes"><span class="verdict">✅ supported</span>
+          <span class="note">inbound <code>thought:true</code> parts render — remembers 99 (2/2); emits thought parts + <code>thoughtSignature</code></span></td>
+        <td class="yes"><span class="verdict">✅ supported</span>
+          <span class="note"><code>functionResponse.parts[inlineData]</code> — the canonical mechanism, 4/4 accurate</span></td>
+      </tr>
+      <tr>
+        <td class="provider">Google<span class="api">OpenAI-compat shim <code>/v1beta/openai</code></span></td>
+        <td class="unk"><span class="verdict">not probed</span></td>
+        <td class="no"><span class="verdict">❌ 400</span>
+          <span class="note">"Invalid content part type: image_url" — Google's own shim drops its own capability</span></td>
+      </tr>
+      <tr>
+        <td class="provider">TogetherAI<span class="api">chat/completions · production</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">CoT-drop reproduces; only harness-side content-fold / tool-channel smuggling carries it (2/2)</span></td>
+        <td class="yes"><span class="verdict">✅ supported</span>
+          <span class="note"><code>image_url</code> in <code>role:tool</code> — clean, the OpenAI-compat existence proof</span></td>
+      </tr>
+      <tr>
+        <td class="provider">Lightning.ai<span class="api">chat/completions</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">both field spellings never render (0/6 + 0/6); content-fold restores memory 5/6</span></td>
+        <td class="meh"><span class="verdict">⚠️ flaky</span>
+          <span class="note">sees it, but output sometimes degenerates / leaks tool-format</span></td>
+      </tr>
+      <tr>
+        <td class="provider">Cerebras<span class="api">chat/completions</span></td>
+        <td class="yes"><span class="verdict">✅ supported</span>
+          <span class="note">the ONLY compat provider that consumes replayed CoT — replay under <code>reasoning</code> (its own output field <code>reasoning_content</code> is rejected as input, a trivial rename)</span></td>
+        <td class="no"><span class="verdict">❌ impossible</span>
+          <span class="note">tool content is text-only, enforced server-side; exhaustive 15-combo matrix all fail; no Responses API</span></td>
+      </tr>
+      <tr>
+        <td class="provider">AWS bedrock-mantle<span class="api">chat/completions + responses</span></td>
+        <td class="no"><span class="verdict">❌ no channel</span>
+          <span class="note">no reasoning channel at all on chat (0/2); Responses reasoning item accepted but never renders (0/5)</span></td>
+        <td class="no"><span class="verdict">❌ 400 / blind</span>
+          <span class="note">chat: validation 400; Responses: 200 but the model is BLIND — hallucinates unrelated images</span></td>
+      </tr>
+      <tr>
+        <td class="provider">DeepInfra<span class="api">chat/completions</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">both fields 0/2; content-fold carries 2/2</span></td>
+        <td class="no"><span class="verdict">❌ 422</span>
+          <span class="note">"Input should be a valid string" — schema reject</span></td>
+      </tr>
+      <tr>
+        <td class="provider">SambaNova<span class="api">chat/completions + responses</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">fields dropped; Responses API can't even ingest a replayed tool result (<code>function_call_output</code> → 400)</span></td>
+        <td class="no"><span class="verdict">❌ 500</span>
+          <span class="note">500'd on <code>image_url</code> in <code>role:tool</code>; the model id has since vanished entirely (404)</span></td>
+      </tr>
+      <tr>
+        <td class="provider">OpenRouter<span class="api">chat/completions</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">both spellings, temp 0 → invents "42"</span></td>
+        <td class="unk"><span class="verdict">not probed</span></td>
+      </tr>
+      <tr>
+        <td class="provider">SiliconFlow<span class="api">chat/completions</span></td>
+        <td class="no"><span class="verdict">❌ dropped</span>
+          <span class="note">both spellings, temp 0 → invents "42" (echoes the planted CoT in its own reasoning field, still doesn't render it)</span></td>
+        <td class="unk"><span class="verdict">not probed</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="fine">
+    <p><strong>Method.</strong> Reasoning carry = the "99 memory test": replay a hand-built tool chain whose
+      first turn's CoT says the number is 99, resume after the tool result, and see whether the model
+      says 99 (rendered) or invents one — invariably 42 (dropped). Status codes lie: a 200 on the replay
+      proves nothing. Tool-image = send an image in a tool/function result and check
+      <em>perception</em> (does it describe the actual image?) against a per-provider user-image control —
+      AWS Responses returns 200 and is blind anyway.</p>
+    <p><strong>The point.</strong> Google's native API proves gemma-4 handles both. Every gap in this
+      table is a provider's OpenAI-compat adapter throwing capability away — a schema choice,
+      not a model limit.</p>
+  </div>
+
+  <h2 class="repro-h">Deterministic repro</h2>
+  <p class="fine">Two request bodies, <code>temperature: 0</code>, fully self-contained (the image is an
+    inline data-URI). POST either to any provider's <code>/chat/completions</code> with your key and
+    model id:</p>
+  <pre class="curl"><code>curl $BASE_URL/chat/completions -H "Authorization: Bearer $KEY" \
+     -H "Content-Type: application/json" -d @repro.json</code></pre>
+
+  <h3 class="repro-h">1 — reasoning carry (the "99 memory test")</h3>
+  <p class="fine">A replayed tool chain whose prior turn's CoT — planted under <em>both</em> field
+    spellings at once — says the number is 99. The completion resumes after the tool result.
+    <strong>Answers 99</strong> → the provider renders replayed reasoning. <strong>Answers 42</strong>
+    (it always invents 42) → dropped.</p>
+  <pre><code>{
+  "model": "google/gemma-4-31B-it",
+  "temperature": 0,
+  "max_tokens": 400,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "send_message",
+        "description": "Send a chat message to the user.",
+        "parameters": {
+          "type": "object",
+          "properties": { "text": { "type": "string" } },
+          "required": ["text"]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "Think of a number, then send \"okay\" to me with the send_message tool, then tell me the number you thought of."
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "reasoning": "I thought of number 99. Now on to sending okay.",
+      "reasoning_content": "I thought of number 99. Now on to sending okay.",
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": { "name": "send_message", "arguments": "{\"text\":\"okay\"}" }
+        }
+      ]
+    },
+    { "role": "tool", "tool_call_id": "call_1", "content": "sent" }
+  ]
+}</code></pre>
+
+  <h3 class="repro-h">2 — tool-call image results</h3>
+  <p class="fine">A replayed tool result carrying a 64×64 <strong>solid red square</strong> as an
+    <code>image_url</code> part in the <code>role:tool</code> message. <strong>"A solid red
+    square"</strong> → the model perceives tool images. <strong>4xx/5xx</strong> → the schema rejects
+    them. <strong>200 describing anything else</strong> → accepted-but-blind (hallucination; the AWS
+    Responses trap — never trust the status code).</p>
+  <pre><code>{
+  "model": "google/gemma-4-31B-it",
+  "temperature": 0,
+  "max_tokens": 220,
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "read_file",
+        "description": "Read a file from disk.",
+        "parameters": {
+          "type": "object",
+          "properties": { "path": { "type": "string" } },
+          "required": ["path"]
+        }
+      }
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "read img.png and describe exactly what you see in the picture"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_1",
+          "type": "function",
+          "function": { "name": "read_file", "arguments": "{\"path\":\"img.png\"}" }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_1",
+      "content": [
+        { "type": "text", "text": "Read img.png (image/png). Image bytes follow." },
+        {
+          "type": "image_url",
+          "image_url": { "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAS0lEQVR42u3PQQkAAAgAsetfWiP4FgYrsKZeS0BAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEDgsqnc8OJg6Ln3AAAAAElFTkSuQmCC" }
+        }
+      ]
+    }
+  ]
+}</code></pre>
+</main>
+</body>
+</html>
